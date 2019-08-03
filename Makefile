@@ -1,10 +1,9 @@
 EXEC = bmpedit
 CC = gcc
-CFLAGS = -Wall -g
-LFLAGS = -lm
+CFLAGS = -Wall
 
 $(EXEC) : main.c
-	$(CC) $(CFLAGS) main.c -o $(EXEC) $(LFLAGS)
+	$(CC) $(CFLAGS) main.c -o $(EXEC)
 
 clean  :
 	rm ${EXEC}
