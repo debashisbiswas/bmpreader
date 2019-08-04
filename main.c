@@ -281,12 +281,9 @@ BitmapColor** readImageData( int32_t aImageWidth, int32_t aImageHeight, uint16_t
 
 void copyImageData( int32_t aImageWidth, int32_t aImageHeight, BitmapColor** aDataDest, BitmapColor** aDataSrc )
 {
-    for( int y = 0; y < aImageHeight; y++ )
+    for( int i = 0; i < aImageWidth; i++ )
     {
-        for( int x = 0; x < aImageWidth; x++ )
-        {
-            aDataDest[ x ][ y ] = aDataSrc[ x ][ y ];
-        }
+        memcpy( aDataDest[ i ], aDataSrc[ i ], sizeof( BitmapColor ) * aImageHeight );
     }
 }
 
