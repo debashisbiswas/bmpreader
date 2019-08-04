@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <limits.h>
 
 #pragma pack(1) // no padding on structs, need exact sizes
@@ -132,6 +133,7 @@ BITMAPFILEHEADER readBitmapFileHeader( FILE* aFile )
     if( aFile )
     {
         fread( &theHeader, sizeof( BITMAPFILEHEADER ), 1, aFile );
+        printf( "Bitmap file header read.\n" );
     }
     return theHeader;
 }
@@ -142,6 +144,7 @@ BITMAPCOREHEADER readBitmapCoreHeader( FILE* aFile )
     if( aFile )
     {
         fread( &theHeader, sizeof( BITMAPCOREHEADER ), 1, aFile );
+        printf( "Information header read: BITMAP CORE\n" );        
     }
     return theHeader;
 }
@@ -152,6 +155,7 @@ BITMAPINFOHEADER readBitmapInfoHeader( FILE* aFile )
     if( aFile )
     {
         fread( &theHeader, sizeof( BITMAPINFOHEADER ), 1, aFile );
+        printf( "Information header read: BITMAP INFO\n" );        
     }
     return theHeader;
 }
@@ -162,6 +166,7 @@ BITMAPV4HEADER readBitmapV4Header( FILE* aFile )
     if( aFile )
     {
         fread( &theHeader, sizeof( BITMAPV4HEADER ), 1, aFile );
+        printf( "Information header read: BITMAP V4\n" );        
     }
     return theHeader;
 }
@@ -172,6 +177,7 @@ BITMAPV5HEADER readBitmapV5Header( FILE* aFile )
     if( aFile )
     {
         fread( &theHeader, sizeof( BITMAPV5HEADER ), 1, aFile );
+        printf( "Information header read: BITMAP V5\n" );        
     }
     return theHeader;
 }
@@ -234,13 +240,20 @@ int calculatePaddingSize( int32_t aImageWidth, uint16_t aBitsPerPixel )
     return findNextMultipleOf4( thePixelDataPerRow ) - thePixelDataPerRow;
 }
 
-BitmapColor** readImageData( int32_t aImageWidth, int32_t aImageHeight, uint16_t aBitsPerPixel, FILE* aFile )
+BitmapColor** allocateImageMemory( int32_t aImageWidth, int32_t aImageHeight )
 {
     BitmapColor** theImageData = ( BitmapColor** )malloc( aImageWidth * sizeof( BitmapColor* ) );
     for( int i = 0; i < aImageWidth; i++ )
     {
         theImageData[ i ] = ( BitmapColor* )malloc( aImageHeight * sizeof( BitmapColor ) );
     }
+
+    return theImageData;
+}
+
+BitmapColor** readImageData( int32_t aImageWidth, int32_t aImageHeight, uint16_t aBitsPerPixel, FILE* aFile )
+{
+    BitmapColor** theImageData = allocateImageMemory( aImageWidth, aImageHeight );
 
     int thePaddingSize = calculatePaddingSize( aImageWidth, aBitsPerPixel );
     // memory does not need to be initialized as it will be used to temporarily store data while reading
@@ -264,6 +277,17 @@ BitmapColor** readImageData( int32_t aImageWidth, int32_t aImageHeight, uint16_t
     }
 
     return theImageData;
+}
+
+void copyImageData( int32_t aImageWidth, int32_t aImageHeight, BitmapColor** aDataDest, BitmapColor** aDataSrc )
+{
+    for( int y = 0; y < aImageHeight; y++ )
+    {
+        for( int x = 0; x < aImageWidth; x++ )
+        {
+            aDataDest[ x ][ y ] = aDataSrc[ x ][ y ];
+        }
+    }
 }
 
 void freeImageData( int32_t aImageWidth, int32_t aImageHeight, BitmapColor** aImageData )
@@ -353,116 +377,169 @@ void grayscaleImageRed( uint32_t aImageWidth, uint32_t aImageHeight, BitmapColor
 
 int main( int argc, char* argv[] )
 {
-    if( argc == 3 )
+    if( argc == 2 )
     {
         const char* theOriginalFilename = argv[ 1 ];
-        const char* theNewFilename = argv[ 2 ];
         FILE* theFile = fopen( theOriginalFilename, "r" );
         if( theFile )
         {
             BITMAPFILEHEADER theBitmapFileHeader = readBitmapFileHeader( theFile );
-            
+            int32_t theImageWidth = 0;
+            int32_t theImageHeight = 0;
+            uint16_t theImageBitCount = 0;
+            const char* theInvertedImageName = "invert.bmp";
+            const char* theRedGrayscaleImageName = "grayscaleRed.bmp";
+            const char* theGreenGrayscaleImageName = "grayscaleGreen.bmp";
+            const char* theBlueGrayscaleImageName = "grayscaleBlue.bmp";
+
+            FILE* theInvertedFile = fopen( theInvertedImageName, "w" );
+            FILE* theRedGrayscaleFile = fopen( theRedGrayscaleImageName, "w" );
+            FILE* theGreenGrayscaleFile = fopen( theGreenGrayscaleImageName, "w" );
+            FILE* theBlueGrayscaleFile = fopen( theBlueGrayscaleImageName, "w" );
+
             switch( theBitmapFileHeader.image_offset )
             {
                 case BITMAPCOREHEADER_IMAGE_OFFSET:
                 {
-                    BITMAPCOREHEADER theInformationHeader = readBitmapCoreHeader( theFile );
-                    BitmapColor** theImageData = readImageData( theInformationHeader.width_px,
-                        theInformationHeader.height_px,
-                        theInformationHeader.bits_per_pixel,
-                        theFile );
+                    BITMAPCOREHEADER theHeader = readBitmapCoreHeader( theFile );
+                    theImageWidth = theHeader.width_px;
+                    theImageHeight = theHeader.height_px;
+                    theImageBitCount = theHeader.bits_per_pixel;
+                    
+                    // write headers to inverted file
+                    writeBitmapFileHeader( theBitmapFileHeader, theInvertedFile );
+                    writeBitmapCoreHeader( theHeader, theInvertedFile );
 
-                    FILE* theNewFile = fopen( theNewFilename, "w" );
+                    // write headers to grayscale red file
+                    writeBitmapFileHeader( theBitmapFileHeader, theRedGrayscaleFile );
+                    writeBitmapCoreHeader( theHeader, theRedGrayscaleFile );
 
-                    invertImage( theInformationHeader.width_px, theInformationHeader.height_px, theImageData );
-                        
-                    writeBitmapFileHeader( theBitmapFileHeader, theNewFile );
-                    writeBitmapCoreHeader( theInformationHeader, theNewFile );
-                    writeImageData( theInformationHeader.width_px,
-                        theInformationHeader.height_px,
-                        theInformationHeader.bits_per_pixel,
-                        theImageData,
-                        theNewFile );
+                    // write headers to grayscale green file
+                    writeBitmapFileHeader( theBitmapFileHeader, theGreenGrayscaleFile );
+                    writeBitmapCoreHeader( theHeader, theGreenGrayscaleFile );
 
-                    freeImageData( theInformationHeader.width_px, theInformationHeader.height_px, theImageData );
-                    fclose( theNewFile );
+                    // write headers to grayscale blue file
+                    writeBitmapFileHeader( theBitmapFileHeader, theBlueGrayscaleFile );
+                    writeBitmapCoreHeader( theHeader, theBlueGrayscaleFile );
                     break;
                 }
+
                 case BITMAPINFOHEADER_IMAGE_OFFSET:
                 {
-                    BITMAPINFOHEADER theInformationHeader = readBitmapInfoHeader( theFile );
-                    BitmapColor** theImageData = readImageData( theInformationHeader.width_px,
-                        theInformationHeader.height_px,
-                        theInformationHeader.bits_per_pixel,
-                        theFile );
+                    BITMAPINFOHEADER theHeader = readBitmapInfoHeader( theFile );
+                    theImageWidth = theHeader.width_px;
+                    theImageHeight = theHeader.height_px;
+                    theImageBitCount = theHeader.bits_per_pixel;
                     
-                    FILE* theNewFile = fopen( theNewFilename, "w" );
+                    // write headers to inverted file
+                    writeBitmapFileHeader( theBitmapFileHeader, theInvertedFile );
+                    writeBitmapInfoHeader( theHeader, theInvertedFile );
 
-                    invertImage( theInformationHeader.width_px, theInformationHeader.height_px, theImageData );
+                    // write headers to grayscale red file
+                    writeBitmapFileHeader( theBitmapFileHeader, theRedGrayscaleFile );
+                    writeBitmapInfoHeader( theHeader, theRedGrayscaleFile );
 
-                    writeBitmapFileHeader( theBitmapFileHeader, theNewFile );
-                    writeBitmapInfoHeader( theInformationHeader, theNewFile );
-                    writeImageData( theInformationHeader.width_px,
-                        theInformationHeader.height_px,
-                        theInformationHeader.bits_per_pixel,
-                        theImageData,
-                        theNewFile );
+                    // write headers to grayscale green file
+                    writeBitmapFileHeader( theBitmapFileHeader, theGreenGrayscaleFile );
+                    writeBitmapInfoHeader( theHeader, theGreenGrayscaleFile );
 
-                    freeImageData( theInformationHeader.width_px, theInformationHeader.height_px, theImageData );
-                    fclose( theNewFile );
+                    // write headers to grayscale blue file
+                    writeBitmapFileHeader( theBitmapFileHeader, theBlueGrayscaleFile );
+                    writeBitmapInfoHeader( theHeader, theBlueGrayscaleFile );
                     break;
                 }
+
                 case BITMAPV4HEADER_IMAGE_OFFSET:
                 {
-                    BITMAPV4HEADER theInformationHeader = readBitmapV4Header( theFile );
-                    BitmapColor** theImageData = readImageData( theInformationHeader.bV4Width,
-                        theInformationHeader.bV4Height,
-                        theInformationHeader.bV4BitCount,
-                        theFile );
+                    BITMAPV4HEADER theHeader = readBitmapV4Header( theFile );
+                    theImageWidth = theHeader.bV4Width;
+                    theImageHeight = theHeader.bV4Height;
+                    theImageBitCount = theHeader.bV4BitCount;
+                    
+                    // write headers to inverted file
+                    writeBitmapFileHeader( theBitmapFileHeader, theInvertedFile );
+                    writeBitmapV4Header( theHeader, theInvertedFile );
 
-                    FILE* theNewFile = fopen( theNewFilename, "w" );
+                    // write headers to grayscale red file
+                    writeBitmapFileHeader( theBitmapFileHeader, theRedGrayscaleFile );
+                    writeBitmapV4Header( theHeader, theRedGrayscaleFile );
 
-                    invertImage( theInformationHeader.bV4Width, theInformationHeader.bV4Height, theImageData );
-                        
-                    writeBitmapFileHeader( theBitmapFileHeader, theNewFile );
-                    writeBitmapV4Header( theInformationHeader, theNewFile );
-                    writeImageData( theInformationHeader.bV4Width,
-                        theInformationHeader.bV4Height,
-                        theInformationHeader.bV4BitCount,
-                        theImageData,
-                        theNewFile );
+                    // write headers to grayscale green file
+                    writeBitmapFileHeader( theBitmapFileHeader, theGreenGrayscaleFile );
+                    writeBitmapV4Header( theHeader, theGreenGrayscaleFile );
 
-                    freeImageData( theInformationHeader.bV4Width, theInformationHeader.bV4Height, theImageData );
-                    fclose( theNewFile );
+                    // write headers to grayscale blue file
+                    writeBitmapFileHeader( theBitmapFileHeader, theBlueGrayscaleFile );
+                    writeBitmapV4Header( theHeader, theBlueGrayscaleFile );
                     break;
                 }
+
                 case BITMAPV5HEADER_IMAGE_OFFSET:
                 {
-                    BITMAPV5HEADER theInformationHeader = readBitmapV5Header( theFile );
-                    BitmapColor** theImageData = readImageData( theInformationHeader.bV5Width, 
-                        theInformationHeader.bV5Height, 
-                        theInformationHeader.bV5BitCount, 
-                        theFile );
+                    BITMAPV5HEADER theHeader = readBitmapV5Header( theFile );
+                    theImageWidth = theHeader.bV5Width;
+                    theImageHeight = theHeader.bV5Height;
+                    theImageBitCount = theHeader.bV5BitCount;
                     
-                    invertImage( theInformationHeader.bV5Width, theInformationHeader.bV5Height, theImageData );
-                    
-                    FILE* theNewFile = fopen( theNewFilename, "w" );
+                    // write headers to inverted file
+                    writeBitmapFileHeader( theBitmapFileHeader, theInvertedFile );
+                    writeBitmapV5Header( theHeader, theInvertedFile );
 
-                    writeBitmapFileHeader( theBitmapFileHeader, theNewFile );
-                    writeBitmapV5Header( theInformationHeader, theNewFile );
-                    writeImageData( theInformationHeader.bV5Width,
-                        theInformationHeader.bV5Height,
-                        theInformationHeader.bV5BitCount,
-                        theImageData,
-                        theNewFile );
+                    // write headers to grayscale red file
+                    writeBitmapFileHeader( theBitmapFileHeader, theRedGrayscaleFile );
+                    writeBitmapV5Header( theHeader, theRedGrayscaleFile );
 
-                    freeImageData( theInformationHeader.bV5Width, theInformationHeader.bV5Height, theImageData );
-                    fclose( theNewFile );
+                    // write headers to grayscale green file
+                    writeBitmapFileHeader( theBitmapFileHeader, theGreenGrayscaleFile );
+                    writeBitmapV5Header( theHeader, theGreenGrayscaleFile );
+
+                    // write headers to grayscale blue file
+                    writeBitmapFileHeader( theBitmapFileHeader, theBlueGrayscaleFile );
+                    writeBitmapV5Header( theHeader, theBlueGrayscaleFile );
                     break;
                 }
             }
 
+            BitmapColor** theImageData = readImageData( theImageWidth, theImageHeight, theImageBitCount, theFile );
+
+            BitmapColor** theNewImageData = allocateImageMemory( theImageWidth, theImageHeight ); 
+            copyImageData( theImageWidth, theImageHeight, theNewImageData, theImageData );
+            
+            // write inverted image data
+            invertImage( theImageWidth, theImageHeight, theNewImageData );
+            writeImageData( theImageWidth, theImageHeight, theImageBitCount, theNewImageData, theInvertedFile );
+            printf( "Wrote inverted image to %s\n", theInvertedImageName );
+
+            copyImageData( theImageWidth, theImageHeight, theNewImageData, theImageData );
+
+            // write grayscale red image data
+            grayscaleImageRed( theImageWidth, theImageHeight, theNewImageData );
+            writeImageData( theImageWidth, theImageHeight, theImageBitCount, theNewImageData, theRedGrayscaleFile );
+            printf( "Wrote grayscale (from red) image to %s\n", theRedGrayscaleImageName );
+
+            copyImageData( theImageWidth, theImageHeight, theNewImageData, theImageData );
+
+            // write grayscale green image data
+            grayscaleImageGreen( theImageWidth, theImageHeight, theNewImageData );
+            writeImageData( theImageWidth, theImageHeight, theImageBitCount, theNewImageData, theGreenGrayscaleFile );
+            printf( "Wrote grayscale (from green) image to %s\n", theGreenGrayscaleImageName );
+
+            copyImageData( theImageWidth, theImageHeight, theNewImageData, theImageData );
+
+            // write grayscale blue image data
+            grayscaleImageBlue( theImageWidth, theImageHeight, theNewImageData );
+            writeImageData( theImageWidth, theImageHeight, theImageBitCount, theNewImageData, theBlueGrayscaleFile );
+            printf( "Wrote grayscale (from blue) image to %s\n", theBlueGrayscaleImageName );
+
+            // MEMORY MANAGEMENT
+            freeImageData( theImageWidth, theImageHeight, theImageData );
+            freeImageData( theImageWidth, theImageHeight, theNewImageData );
+            fclose( theInvertedFile );
+            fclose( theRedGrayscaleFile );
+            fclose( theGreenGrayscaleFile );
+            fclose( theBlueGrayscaleFile );
             fclose( theFile );
+            printf( "Complete.\n" );
         }
         else
         {
@@ -471,7 +548,7 @@ int main( int argc, char* argv[] )
     }
     else
     {
-        printf( "Usage: %s [original BMP filename] [new BMP filename]\n", argv[ 0 ] );
+        printf( "Usage: %s [path to bitmap (.bmp) image]\n", argv[ 0 ] );
     }
     
     return 0;
